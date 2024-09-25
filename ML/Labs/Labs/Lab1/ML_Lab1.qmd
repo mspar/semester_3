@@ -6,6 +6,8 @@ editor: source
 toc: true
 ---
 
+# Part 1
+
 ## Read in Data & Packages
 
 ```{r}
@@ -63,3 +65,116 @@ nrow(comparison_df)
 # df |> select(Vec1) |>  filter(Vec1 != 0) |> View()
 ```
 
+
+```{r}
+tc <- caret::trainControl(method = 'cv', number = 3)
+
+set.seed(12345) # Set to ensure that folds are the same across models
+glm_tweets <- caret::train(as.factor(trump_tweet) ~ .,
+                             data = tweets_trump_bernie,
+                             method = "glm",
+                             family = "binomial",
+                             trControl = tc,
+                           metric = "Accuracy")
+
+summary(glm_tweets)
+glm_tweets
+# report the accuracy -> where from? --> specify Accuracy in metric
+# 0.5184288
+```
+
+## ridge regression
+
+```{r}
+ridge_tweets <- cv.glmnet(
+                      x = X, 
+                      y = tweets_trump_bernie$trump_tweet,
+                      nfolds = 5,              # Number CV-folds
+                      standardize = TRUE,      # Standardize X
+                      family = 'binomial',       # Outcome binary --> logit/binomial
+                      alpha = 0,                 # alpha=0 --> ridge & alpha = 1 --> lasso
+                      type.measure = 'class')  # measure performance in terms of accuracy
+
+ridge_tweets
+
+plot(ridge_tweets)
+
+ridge_tweets$lambda.min
+
+coef(ridge_tweets, s = "lambda.min") |> as.matrix() |> as.data.frame() |> rename(coefs = 1) |> arrange(desc(coefs)) |> View()
+coef(ridge_tweets, s = "lambda.min") |> as.matrix() |> as.data.frame() |> rename(coefs = 1) |> arrange(coefs) |> View()
+```
+
+# Part 2
+
+```{r}
+SN_data <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab1/Kaggle_Social_Network_Ads.csv")) |>
+  mutate(
+    Purchased = as.factor(Purchased)
+  ) |> column_to_rownames(var = "user_id")
+
+tc <- caret::trainControl(method = 'cv', number = 5)
+
+set.seed(12345)
+glm_SN <- caret::train(Purchased ~ .,
+                             data = SN_data,
+                             method = "glm",
+                             family = "binomial",
+                             trControl = tc,
+                           metric = "Accuracy")
+
+summary(glm_SN)
+glm_SN
+# 0.8452715
+```
+
+## GAM
+
+```{r}
+tc_gam <- caret::trainControl(method = 'cv', number = 5)
+
+gam_subset <- SN_data |> select(Age, Salary)
+
+set.seed(12345) # Set to ensure that folds are the same across models
+gam_df2 <- caret::train(Purchased ~ ns(Age, 2) + ns(Salary, 2),
+                           data = SN_data,
+                           method = "glm",
+                           family = "binomial",
+                           trControl = tc_gam)
+
+gam_df3 <- caret::train(Purchased ~ ns(Age, 3) + ns(Salary, 3),
+                           data = SN_data,
+                           method = "glm",
+                           family = "binomial",
+                           trControl = tc_gam)
+
+gam_df4 <- caret::train(Purchased ~ ns(Age, 4) + ns(Salary, 4),
+                           data = SN_data,
+                           method = "glm",
+                           family = "binomial",
+                           trControl = tc_gam)
+
+summary(caret::resamples(x = list(gam_df2,
+                                  gam_df3, 
+                                  gam_df4)))
+
+summary(gam_df2)
+summary(gam_df3)
+summary(gam_df4)
+# Improvement?
+# --> slightly higher accuracy
+# 
+# For Answer to 3 b -> this has to do with "if you add complexity and that makes the model better it was previously underfitted and vice versa. --> This also has implications for bias and variance which are based on the theoretical curves of bias and variance from the slides.
+# 
+# 5: they would reduce compelxit
+```
+
+## Predictive relationships
+
+```{r}
+gam_df2_final <- lm(Purchased ~ ns(Age, 2) + ns(Salary, 2),
+                           data = SN_data)
+
+ggpreds <- ggpredict(gam_df2_final)
+plot(ggpreds)
+```

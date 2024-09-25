@@ -1,0 +1,65 @@
+---
+title: "ML_Lab1"
+author: "Marc Sparhuber"
+format: html
+editor: source
+toc: true
+---
+
+## Read in Data & Packages
+
+```{r}
+library(data.table)
+library(glmnet)
+library(ggplot2)
+library(mlbench)
+library(caret)
+library(splines)
+library(ggeffects)
+library(tidyverse)
+
+tweets_trump_bernie <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab1/trumpbernie.csv"))
+```
+
+## Dimensions
+
+```{r}
+dim(tweets_trump_bernie)
+# 1496 cols
+# 1003 rows
+```
+
+
+```{r}
+standard_log_reg <- glm(trump_tweet ~ .,
+            data = tweets_trump_bernie,
+            family = "binomial"(link = "logit"))
+
+#summary(standard_log_reg)
+coef(standard_log_reg)[1010:1050]
+# --> lots of NAs
+```
+
+
+```{r}
+# Extract predictions on training data & observed values
+comparison_df <- data.frame(train_predictions=standard_log_reg$fitted.values,
+observed=standard_log_reg$y)
+# Apply prediction threshold
+comparison_df$train_predictions<-ifelse(comparison_df$train_predictions>=0.5,
+yes = 1,
+no = 0)
+# Compute accuracy (scale: 0-1, 0=0%, 1=100%)
+nrow(comparison_df[comparison_df$train_predictions==comparison_df$observed,]) /
+nrow(comparison_df)
+ 
+# # testing
+# df1 <- data.frame(Name = names(test_11), Vec1 = test_11, stringsAsFactors = FALSE)
+# df2 <- data.frame(Name = names(test_22), Vec2 = test_22, stringsAsFactors = FALSE)
+# 
+# # Merge the two data frames by the 'Name' column
+# df <- merge(df1, df2, by = "Name", all = TRUE)
+# 
+# df |> select(Vec1) |>  filter(Vec1 != 0) |> View()
+```
+

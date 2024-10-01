@@ -1,14 +1,18 @@
 ---
 title: "ML_Lab1"
 author: "Marc Sparhuber"
-format: html
+format: pdf
 editor: source
+execute:
+  warning: false
+  echo: false
 toc: true
+header-includes:
+      - \usepackage{float}
+      - \floatplacement{table}{H}
 ---
 
-# Part 1
-
-## Read in Data & Packages
+\newpage 
 
 ```{r}
 library(data.table)
@@ -23,7 +27,9 @@ library(tidyverse)
 tweets_trump_bernie <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab1/trumpbernie.csv"))
 ```
 
-## Dimensions
+### Task 1
+
+Would you characterize this data set as being high-dimensional or low-dimensional? Based on this, do you expect that a standard logistic regression will work well for the purpose of prediction?
 
 ```{r}
 dim(tweets_trump_bernie)
@@ -31,6 +37,13 @@ dim(tweets_trump_bernie)
 # 1003 rows
 ```
 
+> I would consider this to be a high-dimensional data set as it contains more variables (columns) than observations (rows). I would expect a standard logistic regression to perform rather poorly and perhaps result in perfect fits for the given training data.
+
+### Task 2
+
+#### a.
+
+Extract the coefficients from the estimated model using the coef() function and inspect the coefficients that are placed 1010–1050 in the output from coef(). Do you notice anything special?
 
 ```{r}
 standard_log_reg <- glm(trump_tweet ~ .,
@@ -38,10 +51,16 @@ standard_log_reg <- glm(trump_tweet ~ .,
             family = "binomial"(link = "logit"))
 
 #summary(standard_log_reg)
-coef(standard_log_reg)[1010:1050]
+#coef(standard_log_reg)[1010:1050]
 # --> lots of NAs
 ```
 
+> Yes, this range of coefficients is exclusively NAs!
+
+#### b.
+
+Examine the training accuracy of the estimated model. What does this result suggest about
+the predictive capacity of the model?
 
 ```{r}
 # Extract predictions on training data & observed values
@@ -54,17 +73,14 @@ no = 0)
 # Compute accuracy (scale: 0-1, 0=0%, 1=100%)
 nrow(comparison_df[comparison_df$train_predictions==comparison_df$observed,]) /
 nrow(comparison_df)
- 
-# # testing
-# df1 <- data.frame(Name = names(test_11), Vec1 = test_11, stringsAsFactors = FALSE)
-# df2 <- data.frame(Name = names(test_22), Vec2 = test_22, stringsAsFactors = FALSE)
-# 
-# # Merge the two data frames by the 'Name' column
-# df <- merge(df1, df2, by = "Name", all = TRUE)
-# 
-# df |> select(Vec1) |>  filter(Vec1 != 0) |> View()
 ```
 
+> While the *training* accuracy is perfect, at 100%, this in no way means that its predictive capacity is similarly good. The *test* accuracy, which is what truly matters during a prediction task is likely much lower and worse due to the perfect *training* accuracy. This is due to overfitting, which entails f^ being so flexible that it models the noise contained in the data instead of successfully approximating the true f. In other words, the predictive capacity of this on new data would be bad because our classification model is too flexible which results in overfitting.
+
+### Task 3
+
+Use the caret package to implement a 3-fold cross-validation procedure that estimates the test accuracy
+of a standard logistic regression. Report the accuracy. Does this result align with your expectations from #1 and #2? Do the results from #2 and #3 provide any indications of either over- or underfitting?
 
 ```{r}
 tc <- caret::trainControl(method = 'cv', number = 3)
@@ -77,15 +93,21 @@ glm_tweets <- caret::train(as.factor(trump_tweet) ~ .,
                              trControl = tc,
                            metric = "Accuracy")
 
-summary(glm_tweets)
-glm_tweets
-# report the accuracy -> where from? --> specify Accuracy in metric
+#summary(glm_tweets)
+#glm_tweets
 # 0.5184288
 ```
 
-## ridge regression
+> The accuracy is ~0.52. This indicates an accuracy that is only slightly better than guessing randomly who wrote the tweet, which is in line with the previous answers to tasks 1 and 2. As stated in the answer to task 2b., the results indicate overfitting.
+
+### Task 4
+
+Now we shall move beyond the standard logistic regression, and more specifically, turn to ridge regression for our prediction task. This importantly entails deciding on a value for the parameter λ. Use glmnet’s function cv.glmnet to find the λ that minimizes the test error, and report the associated test accuracy. Is this a better or worse prediction model compared to the one in #2–3? Which of the two models do you believe have a higher variance? Why?
 
 ```{r}
+
+X <- tweets_trump_bernie |> select(-trump_tweet) |> as.matrix()
+
 ridge_tweets <- cv.glmnet(
                       x = X, 
                       y = tweets_trump_bernie$trump_tweet,
@@ -95,17 +117,38 @@ ridge_tweets <- cv.glmnet(
                       alpha = 0,                 # alpha=0 --> ridge & alpha = 1 --> lasso
                       type.measure = 'class')  # measure performance in terms of accuracy
 
-ridge_tweets
-
-plot(ridge_tweets)
-
-ridge_tweets$lambda.min
-
-coef(ridge_tweets, s = "lambda.min") |> as.matrix() |> as.data.frame() |> rename(coefs = 1) |> arrange(desc(coefs)) |> View()
-coef(ridge_tweets, s = "lambda.min") |> as.matrix() |> as.data.frame() |> rename(coefs = 1) |> arrange(coefs) |> View()
+# ridge_tweets
 ```
 
-# Part 2
+> Looking at the output of the cv.glmnet object, it can be seen that the lambda that minimizes the test error is 3.276. The test accuracy associated with this lambda is ~0.91, which seems quite good and a better prediction model than the previous. I calculated this by subtracting the misclassification rate ("Measure") from 1. As a flexible fit and high variance go hand in hand and the previous model was extremely flexible, I would reason that this one has a lower variance.
+
+### Task 5
+
+Plot lambda against the misclassification error. Interpret the plot in terms of bias and variance.
+
+```{r}
+plot(ridge_tweets)
+```
+
+> The greater lambda gets, the greater the misclassification error. The dotted line on the left minimizes the mean squared error. As the bias-variance trade-off results in the error following a sort of U-shape it can be assumed that this point lies at the center of this U, with (squared) bias increasing to the left and variance increasing to the right.
+
+### Task 6
+
+Lastly, extract the coefficients associated with the lowest test error. Have a closer look at the coefficients with the largest positive and largest negative values. What do they reveal? Do the words you find on either side confine to your expectations?
+
+```{r}
+
+#ridge_tweets$lambda.min
+
+# coef(ridge_tweets, s = "lambda.min") |> as.matrix() |> as.data.frame() |> rename(coefs = 1) |> arrange(desc(coefs)) |> View()
+# coef(ridge_tweets, s = "lambda.min") |> as.matrix() |> as.data.frame() |> rename(coefs = 1) |> arrange(coefs) |> View()
+```
+
+> The words with high coefficients reveal, i.e., words expected to be in Trump tweets, what seems to be more conservative and vague language, whereas tweets which are expected to be in Bernie's tweets seem to contain more verbs. Further analysis here could be done to further distinguish the two's messaging on Twitter.
+
+### Task 6
+
+Begin by importing the file “Kaggle_Social_Network_Ads.csv”. Format the outcome variable Purchased as a factor variable (this is required for the subsequent analysis using the caret package).
 
 ```{r}
 SN_data <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab1/Kaggle_Social_Network_Ads.csv")) |>
@@ -114,7 +157,13 @@ SN_data <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab1/Kaggle_Social_Netwo
   ) |> column_to_rownames(var = "user_id")
 
 tc <- caret::trainControl(method = 'cv', number = 5)
+```
 
+### Task 7
+
+Use the caret package to implement a 5-fold cross-validation that assesses the test accuracy of a standard logistic regression model. Report its test accuracy.
+
+```{r}
 set.seed(12345)
 glm_SN <- caret::train(Purchased ~ .,
                              data = SN_data,
@@ -123,17 +172,19 @@ glm_SN <- caret::train(Purchased ~ .,
                              trControl = tc,
                            metric = "Accuracy")
 
-summary(glm_SN)
-glm_SN
+# summary(glm_SN)
+# glm_SN
 # 0.8452715
 ```
 
-## GAM
+> The test accuracy is ~0.85.
+
+### Task 8
+
+To investigate whether GAMs can improve the performance over the standard logistic regression, implement three separate 5-fold cross-validations; each estimating a GAM with a different degree of freedom for the natural cubic splines (df ∈ {2, 3, 4}). Create splines for the two variables Age and Salary, but not for Gender, which is a categorical variable (hint: use the ns() function from the splines package to create splines). Again, to ensure identical folds, add set.seed(12345) above each train(). You may also re-use the trainControl object from the previous task. Report the accuracies of the different models.
 
 ```{r}
 tc_gam <- caret::trainControl(method = 'cv', number = 5)
-
-gam_subset <- SN_data |> select(Age, Salary)
 
 set.seed(12345) # Set to ensure that folds are the same across models
 gam_df2 <- caret::train(Purchased ~ ns(Age, 2) + ns(Salary, 2),
@@ -154,27 +205,57 @@ gam_df4 <- caret::train(Purchased ~ ns(Age, 4) + ns(Salary, 4),
                            family = "binomial",
                            trControl = tc_gam)
 
-summary(caret::resamples(x = list(gam_df2,
-                                  gam_df3, 
-                                  gam_df4)))
+# summary(caret::resamples(x = list(gam_df2,
+#                                   gam_df3, 
+#                                   gam_df4)))
 
-summary(gam_df2)
-summary(gam_df3)
-summary(gam_df4)
 # Improvement?
 # --> slightly higher accuracy
 # 
 # For Answer to 3 b -> this has to do with "if you add complexity and that makes the model better it was previously underfitted and vice versa. --> This also has implications for bias and variance which are based on the theoretical curves of bias and variance from the slides.
 # 
-# 5: they would reduce compelxit
+# 5: they would reduce compelxity
 ```
 
-## Predictive relationships
+> Across the three models with increasing degrees of freedom for the natural splines, the model with 2 degrees of freedom produces the highest estimated median accuracy, with ~0.91, whereas the other two are at 0.90 and ~0.90, respectively.
+
+#### a.
+
+Do you observe any improvement compared to the standard logistic regression?
+
+> I do. All three of the GAMs outperform the standard logistic regression model.
+
+#### b.
+
+What does the difference in performance between the standard logistic regression and the GAMs suggest about the former? Is it over- or underfitted? Does it have high(er) bias or high(er) variance compared to the GAMs?
+
+> IT suggests that the added complexity from the GAMs adds predictive power to the model. As the model was made more flexible by adding the natural splines compared to the standard logistic regression, complexity increased. As complexity increased and predictive accuracy rose, it can be concluded that the previous model was underfitted. Bias decreased because the GAMs were able to capture the more complex nature of the data and variance at least slightly increased because the more flexible a model is, the more sensetive it is to new training data.
+
+#### c.
+
+Which of the three GAMs do you prefer? Motivate.
+
+> Of the three I would prefer the one with the fewest degrees of freedom, as it increases the estimated test accuracy by the most, based on the k-fold cross validation. The models with higher degrees of freedom seem to already add too much flexibility/complexity.
+
+### Task 9
+
+Next, you shall examine the predictive relationships between the two continuous variables (Age and Salary) and the outcome. For this, you will use ggeffects’s ggpredict() function which computes predictions while varying one variable and holding the remaining fixed at their means/mode. To do so, first re-estimate the GAM-specification that you found to be the best, on the full data using glm (ggeffects does not accept objects from caret). Interpret. Do you find any non-linear relationship?
 
 ```{r}
-gam_df2_final <- lm(Purchased ~ ns(Age, 2) + ns(Salary, 2),
-                           data = SN_data)
+gam_df2_final <- glm(Purchased ~ ns(Age, 2) + ns(Salary, 2),
+                           data = SN_data,
+                     family = "binomial"(link = "logit"))
 
 ggpreds <- ggpredict(gam_df2_final)
-plot(ggpreds)
+
+plot(ggpreds$Age)
+plot(ggpreds$Salary)
 ```
+
+> Whereas the relationship between a positive purchasing decision and Age is nearly linear, the relationship between a positive purchasing decision and Salary isn't, declining from around ~1.32 at a salary of less than 20000 to a floor of ~1.17 at a salary of around 60000 to then increase near-linearly. These results suggest that purchases facilitated by online ads correlate with greater age but that individuals with mid-range salaries have different are less affected by ads in their purchasing decisions than people with more or less money at their disposal. Looking at the confidence bands suggest that greater the age, the less accurate the prediction may be, with the same effect occuring at the lower end of the salary distribution. This is perhaps due to fewer observations at the extremes.
+
+### Task 10
+
+In this second part of the lab, we used GAMs to improve predictive performance. Would we expect to see similar improvements if we instead had used ridge and lasso regression? Why/why not?
+
+> We would expect the opposite, as both ridge and lasso approaches decrease complexity by, e.g., setting inconsequential coefficients to 0. This would have likely led to a less flexible fit and resulted in lower variance, higher bias and worse predictive accuracy.

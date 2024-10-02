@@ -1,0 +1,255 @@
+---
+title: "ML_Lab1"
+author: "Marc Sparhuber"
+format: pdf
+editor: source
+execute:
+  warning: false
+  echo: false
+toc: true
+header-includes:
+      - \usepackage{float}
+      - \floatplacement{table}{H}
+---
+
+\newpage 
+
+## Part 1: Social Network Ad Purchase (cont.)
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(mlbench)
+library(caret)
+library(glmnet)
+library(randomForest) # New (random forest)
+library(rpart.plot)   # New (to plot decision trees)
+library(gbm)
+library(tidyverse)
+
+trump_bernie <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab2/trumpbernie2.csv")) |> 
+  mutate(trump_tweet = as.factor(trump_tweet))
+
+Network_Ads <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab2/Kaggle_Social_Network_Ads.csv")) |> 
+  select(-user_id) |> 
+  mutate(Purchased = as.factor(Purchased))
+
+Network_Ads_Auga <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab2/Kaggle_Social_Network_Ads_Augmented.csv")) |> 
+  select(-user_id) |> 
+  mutate(Purchased = as.factor(Purchased))
+
+```
+
+### Task 2
+
+The first non-parametric method you will use to predict ad purchase is the k-nearest neighbors algorithm. As we talked about in the lecture, it has one key parameter, k, that the researcher must set. Use the caret package to implement a 10-fold cross-validation procedure that examines the test accuracy of kNN under different choices of k (hint 1: set method="knn" to estimate a kNN with caret| hint 2: use the tuneGrid argument to specify your grid of k values). Consider the following values of k: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50}. Because kNN is sensitive to the scale of variables, we must standardize our variables prior to estimation (hint: you can add the following argument to train(): preProcess=c("center","scale"), to do so). From the results, plot the test accuracy against k (hint: results can be extracted from the train object by using $results). Interpret this plot. How does the performance—for the best k—compare to that of GAM and standard linear regression (i.e., your results in lab 1)? Which do you prefer? Why?
+
+```{r}
+set.seed(12345)
+
+tc10 <- caret::trainControl(method = 'cv', number = 10)
+
+knn_ads <- caret::train(Purchased ~ .,
+                          data = Network_Ads,
+                          tuneGrid=expand.grid(k = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50)),
+                          method = "knn",
+                          trControl = tc10,
+                          preProcess=c("center","scale"))
+
+#knn_ads
+
+ggplot(knn_ads$results,aes(x=k,y=Accuracy)) + geom_line()
+
+knn_ads$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+# -> k = 10 highest accuracy with ~0.91
+```
+
+> 
+
+### Task 4
+
+Repeat task #2 for this new data set (from step #3). How does the prediction accuracy change? How do you explain this difference (or lack thereof)?
+
+
+```{r}
+set.seed(12345)
+
+knn_ads_aug <- caret::train(Purchased ~ .,
+                          data = Network_Ads_Auga,
+                          tuneGrid=expand.grid(k = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50)),
+                          method = "knn",
+                          trControl = tc10,
+                          preProcess=c("center","scale"))
+
+#knn_ads
+
+ggplot(knn_ads_aug$results,aes(x=k,y=Accuracy)) + geom_line()
+
+knn_ads_aug$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+# highest accuracy at k = 5, at around ~0.79
+```
+
+>
+
+### Task 5
+
+Motivated by the results obtained in #4, we want to explore an alternative method. Based on the properties—which we discussed in the lecture—of decision trees, do you think it has the potential to perform better than kNN on the data set from #3? If yes, why?
+
+>
+
+### Task 6
+
+Estimating decision trees is what you will do now. In R, we can use the package rpart for this. Decision trees have two main parameters that a researcher must choose prior to estimation: (i) the minimum number of observation in each leaf node (in rpart: minbucket), and (ii) the complexity parameter α (in rpart: cp). In practice, the former is often set heuristically (using some rule-of-thumb) and the latter using cross-validation. Please do the following:
+
+#### a.
+
+Answer why it generally is not a good idea to set minbucket to either a very large number or a very small number (relative to the size of your data).
+
+> 
+
+#### b.
+
+Use the caret package (method="rpart") to implement a 10-fold cross-validation procedure to assess how the test accuracy changes as a function of the complexity parameter (ISL: α; rpart: cp). Hint: use the tuneGrid argument to specify your grid of cp values. Consider the following values for cp: {0, 0.01, 0.025, 0.05, 0.10, 0.25, 0.5, 1.0}. (note: minbucket is here set to a default value=10). Plot the test accuracy against cp (hint: extract results as you did in #2 and #3). Interpret this plot. How does the accuracy for the best cp compare to kNN? What do you attribute this difference to?
+
+```{r}
+set.seed(12345)
+rpart_ads <- caret::train(Purchased ~ .,
+                            data = Network_Ads_Auga,
+                            tuneGrid=expand.grid(cp=c(0, 0.01, 0.025, 0.05, 0.10, 0.25, 0.5, 1.0)),
+                            method = "rpart",
+                            trControl = tc10)
+
+# rpart_ads
+
+ggplot(rpart_ads$results,aes(x=cp,y=Accuracy)) + geom_line()
+
+rpart_ads$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+```
+
+> 
+
+#### c.
+
+Use the rpart.plot package to plot the decision tree you found to be the best in b (hint: you can extract the model with the highest accuracy from a caret model using $finalModel). First report how many internal and terminal nodes this tree has. Then, provide a interpretation. Does any of the “new” variables (X1, . . . , X20) show up in the tree?
+
+```{r}
+rpart_best_tree <- rpart_ads$finalModel
+
+# And we can plot its tree structure using rpart.plot
+rpart.plot(rpart_best_tree)
+```
+
+> 
+
+#### d.
+
+Use caret’s varImp() function to calculate variable importance scores. Interpret.
+
+```{r}
+# To calculate variable importance, we may use the command:
+varImp(rpart_best_tree) |> as.data.frame() |> arrange(desc(Overall)) |> View()
+
+# -> X3 and X7 seem to be of relatively high importance, while Gender and many of the additional variables add nothing or next to nothing
+```
+
+> 
+
+## Part 2: Bernie Sanders and Donald Trump tweets (cont.)
+
+### Task 2
+
+Use caret to implement a 5-fold cross-validation procedure that estimates the test error for a decision tree with different cp (ISL: α) values. Consider the following cp values: {0, 0.001, 0.01, 0.1, 0.25}. Report the accuracy of the best configuration. How does this compare to the performance of a standard logistic regression (LR) and a ridge regression (RR)? You do not need to estimate the LR and the RR yourself— I provide their performance here: Accuracy(LR)=55%. Accuracy(RR)=86%. Why do think this is the case? Doing the following two things might help you answer this question:
+
+```{r}
+tc5 <- caret::trainControl(method = 'cv', number = 5)
+
+set.seed(12345)
+
+rpart_tweets <- caret::train(trump_tweet ~ .,
+                            data = trump_bernie,
+                            tuneGrid=expand.grid(cp=c(0, 0.001, 0.01, 0.1, 0.25)),
+                            method = "rpart",
+                            trControl = tc5)
+
+# ggplot(rpart_ads$results,aes(x=cp,y=Accuracy)) + geom_line()
+
+rpart_tweets$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+
+```
+
+#### a.
+
+Plot the tree which achieved the highest test accuracy (hint: again, you can extract the best model using $finalModel, and plot it using rpart.plot). Is it a big or a small tree?
+
+```{r}
+rpart_best_tree_tweets <- rpart_tweets$finalModel
+
+# And we can plot its tree structure using rpart.plot
+rpart.plot(rpart_best_tree_tweets)
+```
+
+> Quite large.
+
+#### b. Calculate variable importance. How many variables have non-zero values?
+
+```{r}
+varImp(rpart_best_tree_tweets) |> as.data.frame() |> arrange(desc(Overall)) |> filter(Overall != 0) |> nrow()
+```
+
+> 45.
+
+### Task 3
+
+Given the results in #2, we want to explore other alternative methods. Using once again the caret package, you shall now implement a 5-fold cross-validation procedure that fits a random forest model (method="rf") with different mtry values. mtry controls the number of variables that are considered at each split (corresponding to parameter m in ISL). Specifically, you shall consider the following values for mtry: {1, 5, 10, 25, 50, 200} (hint: again, you specify this grid using the argument tuneGrid). Another important parameter of random forest models is the number of trees to use. Here you shall use 200 (hint: you may enter ntree=200 as an argument in train() to do so). The estimation may take a couple of minutes to finish. Once it has finished, please do the following:
+
+```{r}
+set.seed(12345)
+
+rf_tweets <- caret::train(trump_tweet ~ .,
+                         data = trump_bernie,
+                         tuneGrid = expand.grid(mtry = c(1, 5, 10, 25, 50, 200)),  
+                         method = "rf",
+                         trControl = tc5,
+                         ntree = 200)
+
+```
+
+#### a.
+
+Plot accuracy against mtry. Interpret this plot. Does decorrelating the trees seem to help performance?
+
+```{r}
+ggplot(rf_tweets$results,aes(x=mtry,y=Accuracy)) + geom_line()
+```
+
+> 
+
+#### b.
+
+Relate the performance of the best random forest model to the best decision tree model. Do you find a meaningful improvement using random forest? Why do you think that is (or isn’t)? Examining the variable importance scores may provide some clues; how many non-zero variables do you find for the random forest?
+
+```{r}
+rf_tweets$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+```
+
+>
+
+#### c.
+
+Relate the performance of the best random forest model and the ridge regression from #2. What do you think this difference indicates about the data, and more specifically the relation ship between X and y?
+
+>
+
+#### d.
+
+Consider the variable importance scores in a bit more detail: does the variables that appear in the top 20 align with your expectations? Note that variable importance does not reveal the direction; e.g., whether a certain word is associated with Trump or with Bernie. For this, we can use the randomForest’s function plotPartial() which produces a partial dependence plot for a variable of choice. Select three variables (words) which you find interesting, and create three separate partial dependency plot. In order to interpret the y-axis of the plot, use the argument which.class to specify which class (“0” or “1”) should represent the positive class.
+
+```{r}
+varImp(rf_tweets$finalModel) |> as.data.frame() |> arrange(desc(Overall)) |> head(20) |> View()
+
+partialPlot(rf_tweets$finalModel, pred.data=trump_bernie, x.var='great_freq', which.class = 1)
+partialPlot(rf_tweets$finalModel, pred.data=trump_bernie, x.var='fake_freq', which.class = 1)
+partialPlot(rf_tweets$finalModel, pred.data=trump_bernie, x.var='worker_freq', which.class = 1)
+```
+
+>

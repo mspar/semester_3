@@ -1,5 +1,5 @@
 ---
-title: "ML_Lab1"
+title: "Machine Learning for Social Science - Lab 2"
 author: "Marc Sparhuber"
 format: pdf
 editor: source
@@ -60,11 +60,11 @@ knn_ads <- caret::train(Purchased ~ .,
 
 ggplot(knn_ads$results,aes(x=k,y=Accuracy)) + geom_line()
 
-knn_ads$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+# knn_ads$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
 # -> k = 10 highest accuracy with ~0.91
 ```
 
-> 
+> After a steep increase til about k = 6, accuracy stagnates and drops of after k = 15, gradually declining after that. This indicates that test accuracy falls off strongly after a certain point, using KNN. Inspecting the result with the highest accuracy, it appears that k = 6, at around ~0.91, results in the best test accuracy. With this result it performs better than the standard linear regression model and roughly as good as the best of the GAM models (df = 2). If I had to choose one of the three to use, I would stick with the GAM, as it does not suffer from the same drawbacks as kNN in regards to a lack of interpretability, which is something GAMs are actually quite good for because the effect of each predictor on the outcome can be measured separately, if needed.
 
 ### Task 4
 
@@ -85,17 +85,17 @@ knn_ads_aug <- caret::train(Purchased ~ .,
 
 ggplot(knn_ads_aug$results,aes(x=k,y=Accuracy)) + geom_line()
 
-knn_ads_aug$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+# knn_ads_aug$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
 # highest accuracy at k = 5, at around ~0.79
 ```
 
->
+> The test accuracy falls to ~0.79 at k = 5. As can be seen in the plot, the accuracy "line" is more erratic with just two "peaks" of accuracy. This is due to increase in (irrelevant) variables in the new data set. KNN's performance generally decreases with an increase in variables to consider, especially when compared to parametric approaches. For KNN specifically this problem comes from the curse of dimensionality, which is apparent here as the nearest neighbor to any nearby test observation may be very far away in the higher (p-)dimensional space.
 
 ### Task 5
 
 Motivated by the results obtained in #4, we want to explore an alternative method. Based on the properties—which we discussed in the lecture—of decision trees, do you think it has the potential to perform better than kNN on the data set from #3? If yes, why?
 
->
+> I expect slightly better results, as decision trees avoid some of the weaknesses of KNN. This is due to the fact how they partition the data, which is by means of recursive binary splitting. This procedure seeks to divide the data into regions with the goal of the greatest possible error reduction.
 
 ### Task 6
 
@@ -105,7 +105,7 @@ Estimating decision trees is what you will do now. In R, we can use the package 
 
 Answer why it generally is not a good idea to set minbucket to either a very large number or a very small number (relative to the size of your data).
 
-> 
+> Too large a minbucket parameter would lead to the potential oversight of further splits that could be made, whereas too small a minbucket might lead to trees that grow too large without any additional meaning being captured during the splits toward the leaf-ends of the tree.
 
 #### b.
 
@@ -123,10 +123,10 @@ rpart_ads <- caret::train(Purchased ~ .,
 
 ggplot(rpart_ads$results,aes(x=cp,y=Accuracy)) + geom_line()
 
-rpart_ads$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+# rpart_ads$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
 ```
 
-> 
+> Identical test accuracies of ~0.95 occur at cp = 0 and = 0.01. With an increasing complexity parameter they continually decrease. As such, the best test accuracies of this approach outperform those of the KNN model used earlier by about ~0.04. This is because the tuning parameter controls the pruning of the tree, which avoids overfitting by selecting the best subtrees, which is likely the reason why KNN is performing badly with the higher-dimensional dataset. The fact that the best test accuracy also occurs at cp = 0 shows, however, that pruning wasn't actually necessary to achieve the best possible performance.
 
 #### c.
 
@@ -139,7 +139,7 @@ rpart_best_tree <- rpart_ads$finalModel
 rpart.plot(rpart_best_tree)
 ```
 
-> 
+> The generates tree has 4 internal nodes (if you count the root node) and 5 terminal nodes. The root node splits the data according to wether an individual is of age 43 or younger. Obviously, all data go through this split and here the probability for a negative purchase decision is around ~0.36. The 71% for whom age is below 43 are further split by their salary level and the 11% that earn more than 90000 are then further split by the additional variable X7, most of whom make a positive purchasing decision. The individuals earning less predominantly decide not to purchase. For the 29% who are above 43 years old, there is a .84 probability of a purchase. If their X3 is >= .68, a positive purchase decision is even more probable.
 
 #### d.
 
@@ -147,12 +147,12 @@ Use caret’s varImp() function to calculate variable importance scores. Interpr
 
 ```{r}
 # To calculate variable importance, we may use the command:
-varImp(rpart_best_tree) |> as.data.frame() |> arrange(desc(Overall)) |> View()
+# varImp(rpart_best_tree) |> as.data.frame() |> arrange(desc(Overall)) |> View()
 
 # -> X3 and X7 seem to be of relatively high importance, while Gender and many of the additional variables add nothing or next to nothing
 ```
 
-> 
+> X3 and X7 seem to be of relatively high importance, while Gender and many of the additional variables hold very little importance. This lines up with the tree plot.
 
 ## Part 2: Bernie Sanders and Donald Trump tweets (cont.)
 
@@ -173,9 +173,11 @@ rpart_tweets <- caret::train(trump_tweet ~ .,
 
 # ggplot(rpart_ads$results,aes(x=cp,y=Accuracy)) + geom_line()
 
-rpart_tweets$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+# rpart_tweets$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
 
 ```
+
+> The accuracy of the best configuration (0 and 0.001) is ~0.78. This is better than the LR but worse than the RR approach. This is, on one hand, likely due to the high-dimensionality of this data set, where p is approaching n (the data set in the previous lab even had n < p). I think that RR performed better as it is a complexity reducing approach which reduces irrelvant coefficients to near 0. This is essential to a getting a good predicition in this case, as can be seen in Task 2b: only 45 of the 780 variables actually carry non-zero values in a variable importance test.
 
 #### a.
 
@@ -188,15 +190,13 @@ rpart_best_tree_tweets <- rpart_tweets$finalModel
 rpart.plot(rpart_best_tree_tweets)
 ```
 
-> Quite large.
+> Big tree.
 
 #### b. Calculate variable importance. How many variables have non-zero values?
 
 ```{r}
 varImp(rpart_best_tree_tweets) |> as.data.frame() |> arrange(desc(Overall)) |> filter(Overall != 0) |> nrow()
 ```
-
-> 45.
 
 ### Task 3
 
@@ -222,34 +222,36 @@ Plot accuracy against mtry. Interpret this plot. Does decorrelating the trees se
 ggplot(rf_tweets$results,aes(x=mtry,y=Accuracy)) + geom_line()
 ```
 
-> 
+> Yes, the decorrelation of trees has helped, as the best accuracy achieved is higher than with a "normal" decision tree. The Accuracy first rises to above 0.90 and then gradually decreases to just below 0.875 at mtry = 200.
 
 #### b.
 
 Relate the performance of the best random forest model to the best decision tree model. Do you find a meaningful improvement using random forest? Why do you think that is (or isn’t)? Examining the variable importance scores may provide some clues; how many non-zero variables do you find for the random forest?
 
 ```{r}
-rf_tweets$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+# rf_tweets$results |> as.data.frame() |> filter(Accuracy == max(Accuracy)) |> View()
+
+varImp(rf_tweets$finalModel) |> as.data.frame() |> arrange(desc(Overall)) |> filter(Overall != 0) |> nrow()
 ```
 
->
+> Yes, random forest improves the test accuracy quite a bit from ~0.78 with the decision tree model to ~0.91. I think that this is due to the decorrelation process which I suppose is vital with this data set as the words occuring in tweets are likely very correlated amongst one another in their use. Instead of considering all available variables at each split, random forest only allows for a subset of them to be considered (5 at the best model here), which makes the trees not look like another because they would otherwise all look very alike due to the strongest predictors always being chosen for a split. This reduces the variability of results when averaging the results of the different trees together at the end of the algorithm. There are no non-zero variables for the random forest. I have to admit I don't know 100% why but I assume it's because RF randomly chose all of them at some iteration and took into account their contribution, later adding them to the averaging process, making none of them zero.
 
 #### c.
 
-Relate the performance of the best random forest model and the ridge regression from #2. What do you think this difference indicates about the data, and more specifically the relation ship between X and y?
+Relate the performance of the best random forest model and the ridge regression from #2. What do you think this difference indicates about the data, and more specifically the relationship between X and y?
 
->
+> Of these two models, RF performs better. I think that on the one hand this shows the non-linearity and high-dimensionality, both of which ridge regression models can have difficulty dealing with. On the other hand, it seems that when predicting from the variables it is benefitial to include many of them in the model to arrive at the right prediction for y - something that ridge regression specifically avoids doing by reducing coefficients to near zero.
 
 #### d.
 
-Consider the variable importance scores in a bit more detail: does the variables that appear in the top 20 align with your expectations? Note that variable importance does not reveal the direction; e.g., whether a certain word is associated with Trump or with Bernie. For this, we can use the randomForest’s function plotPartial() which produces a partial dependence plot for a variable of choice. Select three variables (words) which you find interesting, and create three separate partial dependency plot. In order to interpret the y-axis of the plot, use the argument which.class to specify which class (“0” or “1”) should represent the positive class.
+Consider the variable importance scores in a bit more detail: does the variables that appear in the top 20 align with your expectations? Note that variable importance does not reveal the direction; e.g., whether a certain word is associated with Trump or with Bernie. For this, we can use the randomForest’s function plotPartial() which produces a partial dependence plot for a variable of choice. Select three variables (words) which you find interesting, and create three separate partial dependency plots. In order to interpret the y-axis of the plot, use the argument which.class to specify which class (“0” or “1”) should represent the positive class.
 
 ```{r}
-varImp(rf_tweets$finalModel) |> as.data.frame() |> arrange(desc(Overall)) |> head(20) |> View()
+# varImp(rf_tweets$finalModel) |> as.data.frame() |> arrange(desc(Overall)) |> head(20) |> View()
 
 partialPlot(rf_tweets$finalModel, pred.data=trump_bernie, x.var='great_freq', which.class = 1)
 partialPlot(rf_tweets$finalModel, pred.data=trump_bernie, x.var='fake_freq', which.class = 1)
 partialPlot(rf_tweets$finalModel, pred.data=trump_bernie, x.var='worker_freq', which.class = 1)
 ```
 
->
+> Looking at the undirected variable importance scores it shows words that are very typical for either Trump or Bernie to have used much more than the other. This aligns with my expectations. Picking three words from the top 20 it is apparent that words such as "great" or "fake" are associated much more with the language used in Trump's tweets than Bernie's and vice versa for a word like "worker".

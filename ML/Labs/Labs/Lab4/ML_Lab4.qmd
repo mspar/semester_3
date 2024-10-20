@@ -16,180 +16,370 @@ header-includes:
 
 ## Part 1: Topic modeling
 
-1. Begin by importing fb-congress-data3.csv. Report basic information about the data set; how many rows and column it has, as well as the name of the variables. 
+### Task 1
+
+Begin by importing fb-congress-data3.csv. Report basic information about the data set; how many rows and column it has, as well as the name of the variables. 
 
 ```{r}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(slam)         # New: needed for perplexity calc
+library(quanteda)     # New: to process text
+library(topicmodels)  # New: to fit topic models
+library(word2vec)
+library(tidyverse)
+
+taste_influence <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab4/fb-congress-data3.csv"))
+dim(taste_influence)
+```
+
+> 6752 rows and 4 variables. It contains screen names, the persons party and their documents.
+
+### Task 2
+
+As you may have noticed from your inspection in #1, this data set has yet to be pre-processed (it contains punctuation, etc.). Hence, that is what you shall do now. More specifically, perform the following steps: 
+
+#### i.
+
+Use quanteda’s corpus() function to create a corpus of your data set. Hint: For the argument x select your data set, for the argument text select the column name which stores the text, for the argument docid_field select the id variable, and finally, add the names of remaining variables to the meta argument (in a list). 
+
+```{r}
+tweets_corpus <- corpus(x = taste_influence,
+                       text_field = "message",
+                       meta = list("screen_name"),
+                       docid_field = 'doc_id')
+```
+
+#### ii. 
+
+Tokenize your corpus using the tokens() function. This splits each document into a vector of so-called tokens. Make the following specifications (which will remove punctuation, numbers, non-alpha-numeric symbols, and urls): • remove_punct = TRUE • remove_numbers = TRUE • remove_symbols = TRUE • remove_url = TRUE • padding = FALSE 
+
+```{r}
+tweets_tokens <- tokens(x = tweets_corpus, 
+                   remove_punct = TRUE, 
+                   remove_numbers = TRUE, 
+                   remove_symbols = TRUE,
+                   remove_url = TRUE,
+                   padding = FALSE)
+```
+
+#### iii.
+
+Exclude english stopwords using the tokens_remove() function. Setting x to the output from the previous step, setting the second argument to stopwords("en"), and setting padding=FALSE. 
+
+```{r}
+tweets_tokens <- tokens_remove(x = tweets_tokens,
+                               stopwords("en"),
+                               padding = FALSE)
+```
+
+#### iv.
+
+To get a feel of how your data looks like now, print the first 3 texts by simple subsetting of the output from iii. 
+
+```{r}
+tweets_tokens
+```
+
+#### v.
+
+As mentioned in the lecture, topic models expect the data to be in a document-term-matrix form. Transform your tokens into a document-term-matrix using the quanteda’s function dfm(). 
+
+```{r}
+tweets_dfm <- dfm(x = tweets_tokens)
+```
+
+#### vi.
+
+As a last pre-processing step, we want to exclude (a) words which are very infrequent (below 5). and (b) documents which have very few words (below 10). When you have done a–b, report the dimensionality of your resulting document-term-matrix. Hint: To do trim infrequent words, use quanteda’s function dfm_trim(). To exclude documents with too few words, you may use the following code (where dtm is the object in which you have stored your document-term-matrix):
+
+```{r}
+tweets_dfm <- dfm_trim(tweets_dfm, min_termfreq = 5)
+
+rowsums <- rowSums(tweets_dfm)
+keep_ids <- which(rowsums <= 10)
+tweets_dfm2 <- tweets_dfm[-keep_ids,]
+```
+
+### Task 3
+
+Now we are ready to do some topic modeling! To do so, we will use the topicmodels package, and the function LDA(). Set x to your document-term-matrix and specify method="Gibbs" (note: Gibbs is the name of a particular estimation procedure; see the Appendix of the lecture for more details). Set the number of iterations to 1000, and specify a seed number to ensure replicability (hint: to specify iterations and seed number, use the control argument). Finally, set the number of topics, K = 50. With these settings specified, start the estimation. This could take a minute or two. 
+
+```{r}
+set.seed(123)
+K <- 50 #50
+mylda <- LDA(x = tweets_dfm2, 
+             k = K, 
+             method= "Gibbs",
+             control= list(iter = 1000,
+                           seed = 123,
+                           verbose = 100))
+```
+
+#### Task 4
+
+Once the estimation is finished, use the get_terms() function to extract the 15 words with the highest probability in each topic. In a real research setting, we would carefully examine each of the topics. Here, I only ask you to briefly skim them, and then focus on 5 that 
+
+(i) you think are interesting, 
+(ii) has a clear theme, and 
+(iii) are clearly distinct from the other topics. 
+
+Provide a label to each of those based on the top 15 words. Complementing your label, please also provide a bar chart displaying on the y-axis the top 15 words, and on the x-axis their topic probabilities. Hint: you can retrieve each topic’s distribution over words using topicmodels’s function posterior. 
+
+Lastly, please also report a general assessment—based on your skim—about the general quality of the topics; do most of them appear clearly themed and distinct, or are there a lot of “junk” topics? 
+
+```{r}
+get_terms(mylda, 15)[,c(17,23,26,46,49)]
+# topics:
+# 17 new energy
+# 23 drug epidemic
+# 26 health care
+# 46 state of american economy
+# 49 foreign aid
 
 ```
 
->
-
-2. As you may have noticed from your inspection in #1, this data set has yet to be pre-processed (it contains punctuation, etc.). Hence, that is what you shall do now. More specifically, perform the following steps: 
-
-```{r}
-
-```
-
->
-
-i. Use quanteda’s corpus() function to create a corpus of your data set. Hint: For the argument x select your data set, for the argument text select the column name which stores the text, for the argument docid_field select the id variable, and finally, add the names of remaining variables to the meta argument (in a list). 
+> Topics:
+- 17 new energy
+- 23 drug epidemic
+- 26 health care
+- 46 state of american economy
+- 49 foreign aid
 
 ```{r}
+mylda_posterior <- topicmodels::posterior(object = mylda)
+topic_distr_over_words <- mylda_posterior$terms
+topic_distr_over_words_dt <- data.table(topic=1:K, 
+                                        topic_distr_over_words)
+topic_distr_over_words_dt <- melt.data.table(topic_distr_over_words_dt, # If you use base R, you can use reshape's "melt()" function.
+                                             id.vars = 'topic')
 
+top15per_topic <- topic_distr_over_words_dt %>% 
+  group_by(topic) %>% 
+  slice_max(order_by = value, n = 15)
+
+top15per_topic |> filter(topic %in% c(17,23,26,46,49)) |> 
+ggplot(aes(y = factor(variable), x = value)) + 
+  geom_bar(stat = 'identity', position = 'dodge') + 
+  facet_wrap(vars(topic), scales = 'free')
 ```
 
->
+> The topics seem to be fairly distinct, not a lot of "junk" topics, though there are a few.
 
-ii. Tokenize your corpus using the tokens() function. This splits each document into a vector of so-called tokens. Make the following specifications (which will remove punctuation, numbers, non-alpha-numeric symbols, and urls): • remove_punct = TRUE • remove_numbers = TRUE • remove_symbols = TRUE • remove_url = TRUE • padding = FALSE 
+#### Task 5
+
+Out of the 5 topics that you labeled, select two which you think are particularly interesting. For these two, identify the three documents which have the highest proportion assigned of this topic (hint 1: use topicmodels‘s posterior() to extract documents’ distribution over topics | hint 2: to identify the document ids which correspond to each row of what you extract from posterior(), you can use ldaobject@documents. See help file for more details.), and do a qualitative inspection (= 2 × 3 documents to read). Does your readings corroborate your labels? Are they about what you expected? 
 
 ```{r}
+# Plot probability over words for 2 topics.
+# top15per_topic |> filter(topic %in% c(17,23)) |>
+# ggplot(aes(y=factor(variable),x=value)) + 
+#   geom_bar(stat = 'identity', position = 'dodge') + 
+#   facet_wrap(vars(topic),scales = 'free')
 
+# To validate labeling; identify documents with highest proportion on any given topic
+doc_topic_proportions <- mylda_posterior$topics
+
+doc_topic_proportions_dt <- data.table(doc_id = mylda@documents,
+                                       doc_topic_proportions)
+colnames(doc_topic_proportions_dt)[2:ncol(doc_topic_proportions_dt)] <- paste0('Topic',colnames(doc_topic_proportions_dt)[2:ncol(doc_topic_proportions_dt)]) 
+
+# Assign topics as column names
+# doc_topic_proportions_dt[order(Topic17,decreasing = T)][1:5,]
+
+# Select 3 rows from original data...
+taste_influence |> filter(doc_id %in% c(857,5081,5059)) |> select(message) |> View()
+
+# Assign topics as column names
+# doc_topic_proportions_dt[order(Topic23,decreasing = T)][1:5,]
+
+# Select 3 rows from original data...
+taste_influence |> filter(doc_id %in% c(1757,552,453)) |> select(message) |> View()
 ```
 
->
-
-iii. Exclude english stopwords using the tokens_remove() function. Setting x to the output from the previous step, setting the second argument to stopwords("en"), and setting padding=FALSE. 
-
-```{r}
-
-```
-
->
-
-iv. To get a feel of how your data looks like now, print the first 3 texts by simple subsetting of the output from iii. 
-
-```{r}
-
-```
-
->
-
-v. As mentioned in the lecture, topic models expect the data to be in a document-term-matrix form. Transform your tokens into a document-term-matrix using the quanteda’s function dfm(). 
-
-```{r}
-
-```
-
->
-
-vi. As a last pre-processing step, we want to exclude (a) words which are very infrequent (below 5). and (b) documents which have very few words (below 10). When you have done a–b, report the dimensionality of your resulting document-term-matrix. Hint: To do trim infrequent words, use quanteda’s function dfm_trim(). To exclude documents with too few words, you may use the following code (where dtm is the object in which you have stored your document-term-matrix):
-
-```{r}
-rowsums <- rowSums(dtm)
-keep_ids <- which(rowsums>=10)
-dtm <- dtm[keep_ids,]
-```
-
->
-
-3. Now we are ready to do some topic modeling! To do so, we will use the topicmodels package, and the function LDA(). Set x to your document-term-matrix and specify method="Gibbs" (note: Gibbs is the name of a particular estimation procedure; see the Appendix of the lecture for more details). Set the number of iterations to 1000, and specify a seed number to ensure replicability (hint: to specify iterations and seed number, use the control argument). Finally, set the number of topics, K=50. 2 With these settings specified, start the estimation. This could take a minute or two. 
-
-```{r}
-
-```
-
->
-
-4. Once the estimation is finished, use the get_terms() function to extract the 15 words with the highest probability in each topic. In a real research setting, we would carefully examine each of the topics. Here, I only ask you to briefly skim them, and then focus on 5 that (i) you think are interesting, (ii) has a clear theme, and (iii) are clearly distinct from the other topics. Provide a label to each of those based on the top 15 words. Complementing your label, please also provide a bar chart displaying on the y-axis the top 15 words, and on the x-axis their topic probabilities. Hint: you can retrieve each topic’s distribution over words using topicmodels’s function posterior. 3 Lastly, please also report a general assessment—based on your skim—about the general quality of the topics; do most of them appear clearly themed and distinct, or are there a lot of “junk” topics? 
-5. Out of the 5 topics that you labeled, select two which you think are particularly interesting. For these two, identify the three documents which have the highest proportion assigned of this topic (hint 1: use topicmodels‘s posterior() to extract documents’ distribution over topics | hint 2: to identify the document ids which correspond to each row of what you extract from posterior(), you can use ldaobject@documents. See help file for more details.), and do a qualitative inspection (= 2 × 3 documents to read). Does your readings corroborate your labels? Are they about what you expected? 
-
-```{r}
-
-```
-
->
+> Actually, they don't and I think this might make me reconsider my labels for the topics.
 
 6. Now, estimate a topic model—as in #3—but with K=3 instead. Extract the top 15 words from each topic, (try to) label each, and then make an assessment of the overall quality of them. To further explore the quality of this topic model, reconsider the documents you read in #5: extract the distribution over topics for these documents (from your new K=3 model). How well does this topic model capture the theme of these documents? Based on your analysis, which of the two K’s do you prefer? Motivate. 
 
 ```{r}
+set.seed(123)
+K <- 3 #50
+mylda2 <- LDA(x = tweets_dfm2, 
+             k = K, 
+             method= "Gibbs",
+             control= list(iter = 1000,
+                           seed = 123,
+                           verbose = 100))
 
+mylda_posterior2 <- topicmodels::posterior(object = mylda2)
+topic_distr_over_words2 <- mylda_posterior2$terms
+topic_distr_over_words_dt2 <- data.table(topic=1:3, 
+                                        topic_distr_over_words2)
+topic_distr_over_words_dt2 <- melt.data.table(topic_distr_over_words_dt2, # If you use base R, you can use reshape's "melt()" function.
+                                             id.vars = 'topic')
+
+top15per_topic2 <- topic_distr_over_words_dt2 %>% 
+  group_by(topic) %>% 
+  slice_max(order_by = value, n = 15)
+
+doc_topic_proportions2 <- mylda_posterior2$topics
+
+doc_topic_proportions_dt2 <- data.table(doc_id = mylda2@documents,
+                                       doc_topic_proportions2)
+colnames(doc_topic_proportions_dt2)[2:ncol(doc_topic_proportions_dt2)] <- paste0('Topic',colnames(doc_topic_proportions_dt2)[2:ncol(doc_topic_proportions_dt2)]) 
+
+# data.table way of extracting top 10 rows by group
+topic_distr_over_words_dt2 <- topic_distr_over_words_dt2[order(value,decreasing = T)]
+top15per_topic2 <- topic_distr_over_words_dt2[,head(.SD,10),by='topic']
+# Assign topics as column names
+# doc_topic_proportions_dt2[order(Topic1,decreasing = T)][1:5,]
+# Select 3 rows from original data...
+taste_influence |> filter(doc_id %in% c(2443,320,1744)) |> select(message) |> View()
 ```
 
->
+> To label these is pretty difficult as they are so broad that it has become difficult to give them discerning labels - in this case looking at the documents with the highest proportions also does not offer any clarity. Therefore, I definitely prefer the k = 50 model, though I do think a good k would lie somewhere in the middle.
 
-7. Continuing with the topic model you concluded the most appropriate, perform the following sets of analyses: i. Compute the prevalence of each topic, across all documents. Report which is the most prevalent topic, overall, and then report—in the form of a single plot; e.g., a bar chart—the prevalence of the topics you labeled. ii. Compare the prevalence on your labeled topics between democrats and republicans. You can for example fit a fractional regression model using glm(family="quasibinomial")4 or using t-tests of difference in means. Interpret.
+7. Continuing with the topic model you concluded the most appropriate, perform the following sets of analyses: 
+
+i. Compute the prevalence of each topic, across all documents. Report which is the most prevalent topic, overall, and then report—in the form of a single plot; e.g., a bar chart—the prevalence of the topics you labeled. 
+
+```{r}
+colSums(doc_topic_proportions) |> as.data.frame() -> overall_proportions
+rownames_to_column(overall_proportions, var = "topic") -> overall_proportions
+# topic 32
+
+overall_proportions |> filter(topic %in% c(32,17,23,26,46,49)) |> ggplot(aes(x = topic, y = `colSums(doc_topic_proportions)`)) +
+  geom_col()
+```
+
+> Topic 32 is the most prevalent overall. 23 is the second most prevalent one and one that I chose earlier. The other topics I chose trail behind these two.
+
+ii. Compare the prevalence on your labeled topics between democrats and republicans. You can for example fit a fractional regression model using glm(family="quasibinomial") or using t-tests of difference in means. Interpret.
 
 ```{r}
 
+doc_topic_proportions_dt$doc_id <- as.numeric(doc_topic_proportions_dt$doc_id)
+
+doc_topic_proportions_dt |> as.data.frame() |> select(c(doc_id,18,24,27,47,50)) |> 
+  mutate(doc_id = as.numeric(doc_id)) |> 
+  left_join(taste_influence, join_by(doc_id)) |> 
+  mutate(party = as.factor(party)) |> 
+  relocate(party, .after = doc_id) -> t_test_df
+
+# overall_proportions |> filter(topic %in% c(32,17,23,26,46,49)) |> View()
+
+t_test_party_Topic17 <- t.test(t_test_df$Topic17[t_test_df$party == "Democrat"], t_test_df$Topic17[t_test_df$party == "Republican"])
+
+t_test_party_Topic23 <- t.test(t_test_df$Topic23[t_test_df$party == "Democrat"], t_test_df$Topic23[t_test_df$party == "Republican"])
+
+t_test_party_Topic26 <- t.test(t_test_df$Topic26[t_test_df$party == "Democrat"], t_test_df$Topic26[t_test_df$party == "Republican"])
+
+t_test_party_Topic46 <- t.test(t_test_df$Topic46[t_test_df$party == "Democrat"], t_test_df$Topic46[t_test_df$party == "Republican"])
+
+t_test_party_Topic49 <- t.test(t_test_df$Topic49[t_test_df$party == "Democrat"], t_test_df$Topic49[t_test_df$party == "Republican"])
+
+t_test_party_Topic17
+t_test_party_Topic23
+t_test_party_Topic26
+t_test_party_Topic46
+t_test_party_Topic49
 ```
 
->
+> Apart from topic 23 the topic prevalences of Democrats and Republicans are significantly different across the topics I picked. Topic 23 was possibly misidentified by me and actually be about cancer and since this is not a topic that divides the political lines much, it seems feasible that there is not significant difference in how democracts and republicans talk about this issue.
 
 ## Part 2: Word embeddings
 
 1. Because word embeddings are not negatively affected by stop words or other highly frequent terms, your first task is to re-import the fb-congress-data3.csv file, and re-process the data; performing step i–ii in task #2, but skipping #3. Here, we also do not want to transform our documents into a document-term matrix. Instead, after having tokenized and cleaned the documents, paste each back into a single string per document. Hint: for this, you could for example write: sapply(mytokens,function(x)paste(x,collapse = " ")). As a last pre-processing step, transform all your text into lowercase (hint: you can use the function tolower() for this). 
 
 ```{r}
+taste_influence <- read.csv(paste0(here::here(), "/ML/Labs/Labs/Lab4/fb-congress-data3.csv"))
 
+tweets_corpus <- corpus(x = taste_influence,
+                       text_field = "message",
+                       meta = list("screen_name"),
+                       docid_field = 'doc_id')
+
+tweets_tokens <- tokens(x = tweets_corpus, 
+                   remove_punct = TRUE, 
+                   remove_numbers = TRUE, 
+                   remove_symbols = TRUE,
+                   remove_url = TRUE,
+                   padding = FALSE)
+
+tweets_tokens <- sapply(tweets_tokens,function(x)paste(x,collapse = " "))
+
+tweets_tokens <- tolower(tweets_tokens)
 ```
-
->
 
 2. Now we are set to fit word embeddings! To begin, let us fit one word embedding model to all documents—not separating posts by democrats and republicans. Use word2vec’s word2vec() function to fit a cbow model (type="cbow") using 15 negative samples per real context/observation (negative=15), and setting dim=50, the number of dimensions of the word vetors/embeddings. This will take a minute or two. 
 
 ```{r}
-
+set.seed(123)
+system.time(w2v <- word2vec(x = tweets_tokens,# Your data 
+                            type = "cbow",    # Model type (the one we talked about in lecture)
+                            window = 5,       # Context defined in terms of +-5 words.
+                            dim = 50,         # Dimensionality of embeddings
+                            iter = 50,        # Estimation iterations (higher means more time...)
+                            hs = FALSE,       # Setting to FALSE here --> "negative sampling procedure"
+                            negative = 15))   # Number of negative samples
 ```
-
->
 
 3. When the estimation in #2 is finished, identify the 10 nearest terms to 3 focal words of your choice/interest. Make sure to select words which occur frequently in your data. Hint: to retrieve the closest words in embedding/word vector space, you may use the following code: predict(w2v,c("word2","word2","word3"),type="nearest",top_n = 10), where wv2 is the object storing the fitted model of the word2vec function. Does the results you find makes sense? Why/why not? 
 
 ```{r}
 
+predict(w2v,c("worker","energy","drug"), type="nearest", top_n = 10)
+
 ```
 
->
+> I think these results make sense generally, though especially the results for worker are a bit perplexing, with jews having the highest similarity.
 
 4. What initially made people so excited about word embeddings was their surprising ability to solve seemingly complex analogy tasks. Your task now is to attempt to replicate one such classical analogy result, first with the embedding vectors that you have already estimated, and second using a pre-trained embedding model. To do so, please perform the following steps: 
-
-```{r}
-
-```
-
->
 
 i. Extract the whole embedding matrix: embedding <- as.matrix(w2v). 
 
 ```{r}
-
+embedding <- as.matrix(w2v)
 ```
-
->
 
 ii. Identify the rows in the embedding matrix which correspond to king, man, woman, and create a new R object kingtowoman which is equal to the vector for king, minus the vector for man, plus the vector for woman. Hint: to extract the row corresponding to a particular word (e.g., “king”), you may use w2v[rownames(w2v)=="king",]. 
 
 ```{r}
-
+embedding[rownames(embedding)=="king",] - embedding[rownames(embedding)=="man",] + embedding[rownames(embedding)=="woman",] -> kingtowoman
 ```
-
->
 
 iii. Use word2vec’s function word2vec_similarity() to identify the 20 most similar words to kingtowoman. Do you find “queen” in the top 20? Why do you think you get the result you do? 
 
 ```{r}
-
+queen_similarity <- word2vec::word2vec_similarity(x = embedding,
+                              y = kingtowoman,
+                              top_n = 20)
 ```
 
->
+> "queens" is not in the top 20. However, king and woman are quite high up. [IDK WHY THOUGH]
 
 iv. Next, we will consider a pre-trained embedding model (trained on all Wikipedia articles that existed in 2014 and about 5 million news articles). The embedding vectors from this model are stored in the file “glove6B200d.rds”.5 Note: this file is large; more than 300MB. Use readRDS() to import it, and stored it in an R object called pretrained. Each row stores the embedding vector for a particular word. With this info in mind, report how many embedding dimensions were used for this model, and how many words we have embedding vectors for.
 
 ```{r}
-
+pretrained <- readRDS("C:/Users/User/Downloads/glove6B200d.rds")
 ```
 
->
+> We have 400k words with 200 dimensions each, though some "words" are not actually words but artefacts.
 
 v. Repeat steps ii–iii for pretrained. Does “queen” appear in the top 20 here? What do you think explains this difference/similarity to the self-trained result? 
 
 ```{r}
+pretrained[rownames(pretrained)=="king",] - pretrained[rownames(pretrained)=="man",] + pretrained[rownames(pretrained)=="woman",] -> kingtowoman2
 
+queen_similarity2 <- word2vec::word2vec_similarity(x = pretrained,
+                              y = kingtowoman2,
+                              top_n = 20)
 ```
 
->
+> King is still first but followed by queen in second place and other words describing royal titles. [IDK WHY]
 
-vi. Given the result in (v), what do you expect, if you were to construct a measure of occupational gender bias along the lines of Garg et al. (2018), that is by comparing the distance between different occupations and gendered words, for example: −−−−−−−−−−−−→ occupationalbias = dist(−−−−−−−−→ statistician, −−→man) – dist(−−−−−−−−→ statistician, −−−−−→ woman), would this score be “more correct” than the one you would obtain from the same calculation on your facebook/congress model? Why/why not? 
+vi. Given the result in (v), what do you expect, if you were to construct a measure of occupational gender bias along the lines of Garg et al. (2018), that is by comparing the distance between different occupations and gendered words, for example: −−−−−−−−−−−−→ occupational bias = dist(−−−−−−−−→ statistician, −−→man) – dist(−−−−−−−−→ statistician, −−−−−→ woman), would this score be “more correct” than the one you would obtain from the same calculation on your facebook/congress model? Why/why not? 
 
 ```{r}
 
@@ -200,7 +390,79 @@ vi. Given the result in (v), what do you expect, if you were to construct a meas
 5. Now we shall make a comparison between democrats and republicans. Split the data from step #1 into two based on party affiliation. Then, repeat 2–3, but now separately for republicans and democrats. For #3, select words which you expect might be used differently between the two political camps (but still are frequently used by both; for example “abortion”, “obamacare”). Do you find any differences? Do they align with your expectations?
 
 ```{r}
+taste_influence |> filter(party == "Democrat") -> taste_dems
+taste_influence |> filter(party == "Republican") -> taste_reps
+
+## Republicans
+
+tweets_corpus_reps <- corpus(x = taste_reps,
+                       text_field = "message",
+                       meta = list("screen_name"),
+                       docid_field = 'doc_id')
+
+tweets_tokens_reps <- tokens(x = tweets_corpus_reps, 
+                   remove_punct = TRUE, 
+                   remove_numbers = TRUE, 
+                   remove_symbols = TRUE,
+                   remove_url = TRUE,
+                   padding = FALSE)
+
+tweets_tokens_reps <- sapply(tweets_tokens_reps,function(x)paste(x,collapse = " "))
+
+tweets_tokens_reps <- tolower(tweets_tokens_reps)
+
+## Democrats
+
+tweets_corpus_dems <- corpus(x = taste_dems,
+                       text_field = "message",
+                       meta = list("screen_name"),
+                       docid_field = 'doc_id')
+
+tweets_tokens_dems <- tokens(x = tweets_corpus_dems, 
+                   remove_punct = TRUE, 
+                   remove_numbers = TRUE, 
+                   remove_symbols = TRUE,
+                   remove_url = TRUE,
+                   padding = FALSE)
+
+tweets_tokens_dems <- sapply(tweets_tokens_dems,function(x)paste(x,collapse = " "))
+
+tweets_tokens_dems <- tolower(tweets_tokens_dems)
+
+### models
+
+## reps
+
+set.seed(123)
+system.time(w2v_reps <- word2vec(x = tweets_tokens_reps,# Your data 
+                            type = "cbow",    # Model type (the one we talked about in lecture)
+                            window = 5,       # Context defined in terms of +-5 words.
+                            dim = 50,         # Dimensionality of embeddings
+                            iter = 50,        # Estimation iterations (higher means more time...)
+                            hs = FALSE,       # Setting to FALSE here --> "negative sampling procedure"
+                            negative = 15))   # Number of negative samples
+
+## reps
+
+set.seed(123)
+system.time(w2v_dems <- word2vec(x = tweets_tokens_dems,# Your data 
+                            type = "cbow",    # Model type (the one we talked about in lecture)
+                            window = 5,       # Context defined in terms of +-5 words.
+                            dim = 50,         # Dimensionality of embeddings
+                            iter = 50,        # Estimation iterations (higher means more time...)
+                            hs = FALSE,       # Setting to FALSE here --> "negative sampling procedure"
+                            negative = 15))   # Number of negative samples
+
+### predicts
+
+## rep
+
+predict(w2v_reps,c("energy","drug"), type="nearest", top_n = 10)
+
+## dem
+
+predict(w2v_dems,c("energy","drug"), type="nearest", top_n = 10)
 
 ```
 
->
+> First of all it's telling that worker doesn't even occur in any of the messages by the republicans. This is likely because this term is "left-loaded" politically speaking. Energy meanwhile reflects ongoing political trends in the US with the dems leaning more renewable and sustainable technologies, while the republicans highlight other factors such as agriculture and mining, focusing less on innovation. Meanwhile the parties do not differ as much when talking about drugs. The opioid pandemic and its causes are highlighted by both camps though there seems to be a greater lean of the dems toward the personal outcomes associated with drugs, whereas the republicans seems to connect it more to economic factors associated with medicine manufacturers. This might also point toward the word "drug" meaning not just addictive substance but also medicine in the US context which might hamper the strength of the word embedding approach.
